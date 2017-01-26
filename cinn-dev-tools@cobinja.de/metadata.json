@@ -1,0 +1,6 @@
+{
+    "dangerous": false, 
+    "description": "This applet provides some developer tools for cinnamon developers", 
+    "uuid": "cinn-dev-tools@cobinja.de", 
+    "name": "Cinnamon developer tools"
+}
