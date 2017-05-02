@@ -92,15 +92,15 @@ MuffinDebugTopics.prototype = {
 
 Signals.addSignalMethods(MuffinDebugTopics.prototype);
 
-function MyApplet(metadata, orientation, panel_height) {
-  this._init(metadata, orientation, panel_height);
+function MyApplet(metadata, orientation, panel_height, instanceId) {
+  this._init(metadata, orientation, panel_height, instanceId);
 }
 
 MyApplet.prototype = {
   __proto__: Applet.IconApplet.prototype,
   
-  _init: function(metadata, orientation, panel_height) {
-    Applet.IconApplet.prototype._init.call(this, orientation, panel_height);
+  _init: function(metadata, orientation, panel_height, instanceId) {
+    Applet.IconApplet.prototype._init.call(this, orientation, panel_height, instanceId);
     this.set_applet_icon_symbolic_name("video-display-symbolic");
     this.set_applet_tooltip("Cinnamon Developer Tools");
     
@@ -123,6 +123,6 @@ MyApplet.prototype = {
 
 Signals.addSignalMethods(MyApplet.prototype);
 
-function main(metadata, orientation, panel_height) {
-  return new MyApplet(metadata, orientation, panel_height);
+function main(metadata, orientation, panel_height, instanceId) {
+  return new MyApplet(metadata, orientation, panel_height, instanceId);
 }
