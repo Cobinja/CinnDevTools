@@ -1,4 +1,6 @@
 const Applet = imports.ui.applet;
+const Main = imports.ui.main;
+const Util = imports.misc.util;
 const St = imports.gi.St;
 const Cinnamon = imports.gi.Cinnamon;
 const Lang = imports.lang;
@@ -92,6 +94,88 @@ MuffinDebugTopics.prototype = {
 
 Signals.addSignalMethods(MuffinDebugTopics.prototype);
 
+function XletMenuItem(dir, uuid) {
+  this._init(dir, uuid);
+}
+
+XletMenuItem.prototype = {
+  __proto__: PopupMenu.PopupMenuItem.prototype,
+  
+  _init: function(dir, uuid) {
+    PopupMenu.PopupMenuItem.prototype._init.call(this, uuid);
+    this._dir = dir;
+    this._uuid = uuid;
+    this.connect("activate", Lang.bind(this, this._onActivate));
+  },
+  
+  _onActivate: function() {
+    let iter = this._dir.enumerate_children(Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, null);
+    global.log("dir: " + this._dir.get_path());
+    let fileInfo;
+    while ((fileInfo = iter.next_file(null)) != null) {
+      let fileName = fileInfo.get_name();
+      global.log("fileName: " + fileName);
+      let [locale, suffix] = fileName.split(".");
+      if (suffix == "po") {
+        let fil = this._dir.get_child(fileName);
+        let targetFileName = GLib.build_filenamev([GLib.get_user_data_dir(), "locale", locale, "LC_MESSAGES", this._uuid + ".mo"]);
+        //"msgfmt", "-c", os.path.join(dirname, file.filename), "-o", os.path.join(this_locale_dir, '%s.mo' % uuid)]
+        let cmd = "msgfmt -c " + fil.get_path() + " -o " + targetFileName;
+        global.log("Spawning \"" + cmd + "\"");
+        Util.spawnCommandLineAsync(cmd, null, Lang.bind(this, function() {
+          Main.notifyError("Translation Error", "Error translating " + fileName + " from " + this._uuid + "\n" + cmd);
+        }));
+      }
+    }
+  }
+}
+
+function XletTranslations() {
+  this._init();
+}
+
+XletTranslations.prototype = {
+  _init: function() {
+    this.subMenuItem = new PopupMenu.PopupSubMenuMenuItem("Xlet Translations");
+    this._xletTypes = {}
+    
+    this._appletSubMenu = new PopupMenu.PopupSubMenuMenuItem("Applets");
+    this._deskletSubMenu = new PopupMenu.PopupSubMenuMenuItem("Desklets");
+    this._extensionSubMenu = new PopupMenu.PopupSubMenuMenuItem("Extensions");
+    
+    this.subMenuItem.menu.addMenuItem(this._appletSubMenu);
+    this.subMenuItem.menu.addMenuItem(this._deskletSubMenu);
+    this.subMenuItem.menu.addMenuItem(this._extensionSubMenu);
+  },
+  
+  _loadXlets: function(xletType, subMenuItem) {
+    let path = GLib.build_filenamev([global.userdatadir, xletType]);
+    let dir = Gio.file_new_for_path(path);
+    let iter = dir.enumerate_children(Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, null);
+    let fileInfo;
+    let menuItems = [];
+    while ((fileInfo = iter.next_file(null)) != null) {
+      let xletDir = iter.get_child(fileInfo);
+      let poDir = xletDir.get_child("po");
+      if (poDir.query_exists(null)) {
+        let menuItem = new XletMenuItem(poDir, fileInfo.get_name());
+        subMenuItem.menu.addMenuItem(menuItem);
+      }
+    }
+  },
+  
+  _onOpen: function() {
+    this._appletSubMenu.menu.removeAll();
+    this._deskletSubMenu.menu.removeAll();
+    this._extensionSubMenu.menu.removeAll();
+    this._loadXlets("applets", this._appletSubMenu);
+    this._loadXlets("desklets", this._deskletSubMenu);
+    this._loadXlets("extensions", this._extensionSubMenu);
+  }
+}
+
+Signals.addSignalMethods(XletTranslations.prototype);
+
 function MyApplet(metadata, orientation, panel_height, instanceId) {
   this._init(metadata, orientation, panel_height, instanceId);
 }
@@ -109,14 +193,17 @@ MyApplet.prototype = {
     this.menuManager.addMenu(this.menu);
     
     this.muffinDebugTopics = new MuffinDebugTopics();
+    this.xletTranslations = new XletTranslations();
   },
   
   on_applet_added_to_panel: function() {
     this.menu.addMenuItem(this.muffinDebugTopics.subMenuItem);
+    this.menu.addMenuItem(this.xletTranslations.subMenuItem);
     this.muffinDebugTopics.on_applet_added_to_panel();
   },
   
   on_applet_clicked: function(event) {
+    this.xletTranslations._onOpen();
     this.menu.toggle();
   }
 }
