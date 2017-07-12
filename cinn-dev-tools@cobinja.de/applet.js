@@ -110,16 +110,21 @@ XletMenuItem.prototype = {
   
   _onActivate: function() {
     let iter = this._dir.enumerate_children(Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, null);
-    global.log("dir: " + this._dir.get_path());
     let fileInfo;
     while ((fileInfo = iter.next_file(null)) != null) {
       let fileName = fileInfo.get_name();
-      global.log("fileName: " + fileName);
       let [locale, suffix] = fileName.split(".");
       if (suffix == "po") {
         let fil = this._dir.get_child(fileName);
+        let targetDirName = GLib.build_filenamev([GLib.get_user_data_dir(), "locale", locale, "LC_MESSAGES"]);
+        let targetDir = Gio.file_new_for_path(targetDirName);
+        try {
+          targetDir.make_directory_with_parents(null);
+        }
+        catch (e) {
+          // Just a dummy, creating fails if directory already exists
+        }
         let targetFileName = GLib.build_filenamev([GLib.get_user_data_dir(), "locale", locale, "LC_MESSAGES", this._uuid + ".mo"]);
-        //"msgfmt", "-c", os.path.join(dirname, file.filename), "-o", os.path.join(this_locale_dir, '%s.mo' % uuid)]
         let cmd = "msgfmt -c " + fil.get_path() + " -o " + targetFileName;
         global.log("Spawning \"" + cmd + "\"");
         Util.spawnCommandLineAsync(cmd, null, Lang.bind(this, function() {
