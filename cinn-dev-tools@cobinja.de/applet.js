@@ -1,5 +1,6 @@
 const Applet = imports.ui.applet;
 const Main = imports.ui.main;
+const Extension = imports.ui.extension;
 const Util = imports.misc.util;
 const St = imports.gi.St;
 const Cinnamon = imports.gi.Cinnamon;
@@ -94,17 +95,18 @@ MuffinDebugTopics.prototype = {
 
 Signals.addSignalMethods(MuffinDebugTopics.prototype);
 
-function XletMenuItem(dir, uuid) {
-  this._init(dir, uuid);
+function XletMenuItem(dir, uuid, type) {
+  this._init(dir, uuid, type);
 }
 
 XletMenuItem.prototype = {
   __proto__: PopupMenu.PopupMenuItem.prototype,
   
-  _init: function(dir, uuid) {
+  _init: function(dir, uuid, type) {
     PopupMenu.PopupMenuItem.prototype._init.call(this, uuid);
     this._dir = dir;
     this._uuid = uuid;
+    this._type = type;
     this.connect("activate", Lang.bind(this, this._onActivate));
   },
   
@@ -126,10 +128,29 @@ XletMenuItem.prototype = {
         }
         let targetFileName = GLib.build_filenamev([GLib.get_user_data_dir(), "locale", locale, "LC_MESSAGES", this._uuid + ".mo"]);
         let cmd = "msgfmt -c " + fil.get_path() + " -o " + targetFileName;
-        global.log("Spawning \"" + cmd + "\"");
-        Util.spawnCommandLineAsync(cmd, null, Lang.bind(this, function() {
+        let curLocales = GLib.get_language_names();
+        let locFound = false;
+        if (curLocales.indexOf(locale) >= 0) {
+          locFound = true;
+        }
+        else {
+          for (let i = 0; i < curLocales.length; i++) {
+            let curLoc = curLocales[i];
+            if (curLoc.startsWith(locale)) {
+              locFound = true;
+              break;
+            }
+          }
+        }
+        let sucCb = () => {
+          Extension.reloadExtension(this._uuid, this._type);
+        };
+        
+        let errCb = () => {
           Main.notifyError("Translation Error", "Error translating " + fileName + " from " + this._uuid + "\n" + cmd);
-        }));
+        };
+        global.log("Compiling translation: " + this._uuid + ", " + locale);
+        Util.spawnCommandLineAsync(cmd, locFound ? sucCb : null, errCb);
       }
     }
   }
@@ -142,7 +163,6 @@ function XletTranslations() {
 XletTranslations.prototype = {
   _init: function() {
     this.subMenuItem = new PopupMenu.PopupSubMenuMenuItem("Xlet Translations");
-    this._xletTypes = {}
     
     this._appletSubMenu = new PopupMenu.PopupSubMenuMenuItem("Applets");
     this._deskletSubMenu = new PopupMenu.PopupSubMenuMenuItem("Desklets");
@@ -154,8 +174,7 @@ XletTranslations.prototype = {
   },
   
   _loadXlets: function(xletType, subMenuItem) {
-    let path = GLib.build_filenamev([global.userdatadir, xletType]);
-    let dir = Gio.file_new_for_path(path);
+    let dir = Gio.file_new_for_path(xletType.userDir);
     let iter = dir.enumerate_children(Gio.FILE_ATTRIBUTE_STANDARD_NAME, 0, null);
     let fileInfo;
     let menuItems = [];
@@ -163,7 +182,7 @@ XletTranslations.prototype = {
       let xletDir = iter.get_child(fileInfo);
       let poDir = xletDir.get_child("po");
       if (poDir.query_exists(null)) {
-        let menuItem = new XletMenuItem(poDir, fileInfo.get_name());
+        let menuItem = new XletMenuItem(poDir, fileInfo.get_name(), xletType);
         subMenuItem.menu.addMenuItem(menuItem);
       }
     }
@@ -173,9 +192,9 @@ XletTranslations.prototype = {
     this._appletSubMenu.menu.removeAll();
     this._deskletSubMenu.menu.removeAll();
     this._extensionSubMenu.menu.removeAll();
-    this._loadXlets("applets", this._appletSubMenu);
-    this._loadXlets("desklets", this._deskletSubMenu);
-    this._loadXlets("extensions", this._extensionSubMenu);
+    this._loadXlets(Extension.Type.APPLET, this._appletSubMenu);
+    this._loadXlets(Extension.Type.DESKLET, this._deskletSubMenu);
+    this._loadXlets(Extension.Type.EXTENSION, this._extensionSubMenu);
   }
 }
 
